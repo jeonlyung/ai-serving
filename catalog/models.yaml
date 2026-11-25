@@ -1,0 +1,68 @@
+# 모델 카탈로그 — 서빙할 모델은 전부 여기서 정의한다.
+#   servectl validate                  검증
+#   servectl plan                      GPU 메모리 산정
+#   servectl render compose|k8s        배포 산출물 생성
+#
+# id 는 클라이언트가 보내는 model 값이다. ai-core 의 AICORE_MODEL_* 와 맞춰 두었다.
+version: 1
+
+engines:
+  vllm:
+    image: vllm/vllm-openai:v0.34.0
+    port: 8000
+    metrics_path: /metrics
+    health_path: /health
+  sglang:
+    image: lmsysorg/sglang:v0.5.23
+    port: 30000
+    metrics_path: /metrics
+    health_path: /health
+  llamacpp:                     # CPU / Apple Silicon 개발·소규모 운영
+    image: ghcr.io/ggml-org/llama.cpp:server
+    port: 8080
+    metrics_path: /metrics
+    health_path: /health
+  mock:                         # GPU 없이 전체 스택(라우터·모니터링)을 검증
+    image: ai-serving:local
+    port: 8000
+    metrics_path: /metrics
+    health_path: /health
+
+models:
+  # 답변·요약용 큰 모델 — A100 80G 2장 텐서 병렬
+  - id: google/gemma-3-27b-it
+    aliases: [answer, summarize]
+    engine: vllm
+    replicas: 1
+    gpu: { type: A100-80G, count: 2, memory_gb: 80 }
+    tensor_parallel: 2
+    max_model_len: 16384
+    max_num_seqs: 32
+    fallback: google/gemma-3-4b-it
+    arch: { params_b: 27, layers: 62, kv_heads: 16, head_dim: 128 }
+    gguf: unsloth/gemma-3-27b-it-GGUF:Q4_K_M
+
+  # 분류용 작은 모델 — GPU 1장, 빠른 응답
+  - id: google/gemma-3-4b-it
+    aliases: [classify]
+    engine: vllm
+    replicas: 2
+    gpu: { type: L40S, count: 1, memory_gb: 48 }
+    max_model_len: 8192
+    max_num_seqs: 48
+    autoscale: { min: 2, max: 6, waiting_threshold: 8 }   # K8s + KEDA
+    arch: { params_b: 4, layers: 34, kv_heads: 4, head_dim: 256 }
+    gguf: unsloth/gemma-3-4b-it-GGUF:Q4_K_M
+
+  # 도구 호출(에이전트)용 — tool-call 파서 활성화, FP8 양자화로 GPU 1장
+  - id: Qwen/Qwen3-32B
+    aliases: [agent]
+    engine: vllm
+    gpu: { type: H100-80G, count: 1, memory_gb: 80 }
+    quantization: fp8
+    kv_cache_dtype: fp8
+    max_model_len: 32768
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    arch: { params_b: 32, layers: 64, kv_heads: 8, head_dim: 128 }
+    gguf: unsloth/Qwen3-32B-GGUF:Q4_K_M

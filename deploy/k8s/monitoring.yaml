@@ -1,0 +1,109 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: engines
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: engine
+  podTargetLabels:
+  - model
+  podMetricsEndpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: router
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: router
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ai-serving
+  labels:
+    release: prometheus
+spec:
+  groups:
+  - name: llm-serving
+    rules:
+    - alert: LLMEngineDown
+      expr: up{job=~"(.*/)?engines"} == 0
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: 추론 엔진 다운 ({{ $labels.model }} / {{ $labels.instance }})
+        description: 스크레이프 실패 2분 지속. 모델 로딩 중이면 정상일 수 있음 — 로그 확인.
+    - alert: LLMNoHealthyReplicas
+      expr: router_upstreams_healthy == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: '{{ $labels.model }} 가용 복제본 0 — 폴백 모델로 우회 중이거나 요청 실패'
+    - alert: LLMRequestQueueBacklog
+      expr: sum by (model_name) (vllm:num_requests_waiting) > 20
+      for: 3m
+      labels:
+        severity: warning
+      annotations:
+        summary: '{{ $labels.model_name }} 대기 요청 {{ $value }}건 — 복제본 증설 검토'
+    - alert: LLMKVCacheNearFull
+      expr: max by (model_name) (vllm:kv_cache_usage_perc) > 0.92
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: '{{ $labels.model_name }} KV 캐시 {{ $value | humanizePercentage }} — 선점(preemption)·지연 급증 위험'
+    - alert: LLMHighTTFT
+      expr: |
+        histogram_quantile(0.95, sum by (le, model_name) (rate(vllm:time_to_first_token_seconds_bucket[5m]))) > 3
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: '{{ $labels.model_name }} TTFT p95 {{ $value | humanizeDuration }} (기준 3s)'
+    - alert: LLMRouterErrorRate
+      expr: |
+        sum by (model) (rate(router_requests_total{status=~"5.."}[5m]))
+          / clamp_min(sum by (model) (rate(router_requests_total[5m])), 1e-9) > 0.05
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: '{{ $labels.model }} 오류율 {{ $value | humanizePercentage }}'
+    - alert: LLMFallbackActive
+      expr: sum by (from_model) (rate(router_fallbacks_total[5m])) > 0
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: '{{ $labels.from_model }} 요청이 폴백 모델로 우회 중 (품질 저하 가능)'
+    - alert: GPUMemoryHigh
+      expr: DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE) > 0.97
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: GPU {{ $labels.gpu }} 메모리 97% 초과
+    - alert: GPUTemperatureHigh
+      expr: DCGM_FI_DEV_GPU_TEMP > 85
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: GPU {{ $labels.gpu }} 온도 {{ $value }}℃

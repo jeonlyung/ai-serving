@@ -1,0 +1,137 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: router-config
+data:
+  router.yaml: |
+    routes:
+    - id: google/gemma-3-27b-it
+      upstreams:
+      - http://google-gemma-3-27b-it.ai-serving.svc:8000
+      aliases:
+      - answer
+      - summarize
+      fallback: google/gemma-3-4b-it
+    - id: google/gemma-3-4b-it
+      upstreams:
+      - http://google-gemma-3-4b-it.ai-serving.svc:8000
+      aliases:
+      - classify
+    - id: Qwen/Qwen3-32B
+      upstreams:
+      - http://qwen-qwen3-32b.ai-serving.svc:8000
+      aliases:
+      - agent
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: router
+  labels:
+    app.kubernetes.io/name: router
+    app.kubernetes.io/component: router
+    app.kubernetes.io/part-of: ai-serving
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: router
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: router
+        app.kubernetes.io/component: router
+        app.kubernetes.io/part-of: ai-serving
+    spec:
+      containers:
+      - name: router
+        image: ghcr.io/your-org/ai-serving:0.1.0
+        command:
+        - uvicorn
+        - servectl.router.app:app_from_env
+        - --factory
+        - --host
+        - 0.0.0.0
+        - --port
+        - '8000'
+        - --no-access-log
+        env:
+        - name: ROUTER_CONFIG
+          value: /etc/router/router.yaml
+        - name: ROUTER_API_KEYS
+          valueFrom:
+            secretKeyRef:
+              name: ai-serving-secrets
+              key: ROUTER_API_KEYS
+              optional: true
+        ports:
+        - name: http
+          containerPort: 8000
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8000
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            memory: 512Mi
+        volumeMounts:
+        - name: cfg
+          mountPath: /etc/router
+      volumes:
+      - name: cfg
+        configMap:
+          name: router-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: router
+  labels:
+    app.kubernetes.io/name: router
+    app.kubernetes.io/component: router
+    app.kubernetes.io/part-of: ai-serving
+spec:
+  selector:
+    app.kubernetes.io/name: router
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: router
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: router
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: router
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: router
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70

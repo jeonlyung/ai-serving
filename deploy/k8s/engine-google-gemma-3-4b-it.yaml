@@ -1,0 +1,162 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: google-gemma-3-4b-it
+  labels:
+    app.kubernetes.io/name: google-gemma-3-4b-it
+    app.kubernetes.io/component: engine
+    app.kubernetes.io/part-of: ai-serving
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: google-gemma-3-4b-it
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: google-gemma-3-4b-it
+        app.kubernetes.io/component: engine
+        app.kubernetes.io/part-of: ai-serving
+        model: google-gemma-3-4b-it
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8000'
+        prometheus.io/path: /metrics
+    spec:
+      containers:
+      - name: engine
+        image: vllm/vllm-openai:v0.34.0
+        ports:
+        - name: http
+          containerPort: 8000
+        env:
+        - name: HF_HOME
+          value: /root/.cache/huggingface
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: ai-serving-secrets
+              key: HF_TOKEN
+              optional: true
+        - name: VLLM_LOGGING_LEVEL
+          value: INFO
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 10
+          failureThreshold: 180
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 10
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 20
+          failureThreshold: 6
+          timeoutSeconds: 10
+        volumeMounts:
+        - name: hf-cache
+          mountPath: /root/.cache/huggingface
+        - name: shm
+          mountPath: /dev/shm
+        args:
+        - google/gemma-3-4b-it
+        - --served-model-name
+        - google/gemma-3-4b-it
+        - classify
+        - --host
+        - 0.0.0.0
+        - --port
+        - '8000'
+        - --max-model-len
+        - '8192'
+        - --max-num-seqs
+        - '48'
+        - --gpu-memory-utilization
+        - '0.9'
+        - --dtype
+        - auto
+        - --tensor-parallel-size
+        - '1'
+        - --enable-prefix-caching
+        - --generation-config
+        - vllm
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+      volumes:
+      - name: hf-cache
+        persistentVolumeClaim:
+          claimName: hf-cache
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi
+      terminationGracePeriodSeconds: 60
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: google-gemma-3-4b-it
+  labels:
+    app.kubernetes.io/name: google-gemma-3-4b-it
+    app.kubernetes.io/component: engine
+    app.kubernetes.io/part-of: ai-serving
+    model: google-gemma-3-4b-it
+    ai-serving/model-id: google-gemma-3-4b-it
+spec:
+  selector:
+    app.kubernetes.io/name: google-gemma-3-4b-it
+  ports:
+  - name: http
+    port: 8000
+    targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: google-gemma-3-4b-it
+  labels:
+    app.kubernetes.io/name: google-gemma-3-4b-it
+    app.kubernetes.io/component: engine
+    app.kubernetes.io/part-of: ai-serving
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: google-gemma-3-4b-it
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: google-gemma-3-4b-it
+  labels:
+    app.kubernetes.io/name: google-gemma-3-4b-it
+    app.kubernetes.io/component: autoscaler
+    app.kubernetes.io/part-of: ai-serving
+spec:
+  scaleTargetRef:
+    name: google-gemma-3-4b-it
+  minReplicaCount: 2
+  maxReplicaCount: 6
+  cooldownPeriod: 600
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus-operated.monitoring.svc:9090
+      query: sum(vllm:num_requests_waiting{model_name="google/gemma-3-4b-it"})
+      threshold: '8'

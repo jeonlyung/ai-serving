@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hf-cache
+  labels:
+    app.kubernetes.io/name: hf-cache
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/part-of: ai-serving
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 500Gi

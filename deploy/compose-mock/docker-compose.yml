@@ -1,0 +1,179 @@
+# 자동 생성 — 직접 고치지 말고 catalog/models.yaml 을 수정한 뒤 `servectl render compose`
+# 모델 3종 · GPU 0장 필요 · mock 엔진
+name: ai-serving
+services:
+  google-gemma-3-27b-it:
+    image: ai-serving:local
+    restart: unless-stopped
+    environment: {}
+    healthcheck:
+      test:
+      - CMD
+      - python3
+      - -c
+      - import urllib.request as u;u.urlopen('http://localhost:8000/health',timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 600s
+    networks:
+    - serving
+    command:
+    - servectl
+    - mock-engine
+    - --model
+    - google/gemma-3-27b-it
+    - --port
+    - '8000'
+    pull_policy: never
+  google-gemma-3-4b-it-1:
+    image: ai-serving:local
+    restart: unless-stopped
+    environment: {}
+    healthcheck:
+      test:
+      - CMD
+      - python3
+      - -c
+      - import urllib.request as u;u.urlopen('http://localhost:8000/health',timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 600s
+    networks:
+    - serving
+    command:
+    - servectl
+    - mock-engine
+    - --model
+    - google/gemma-3-4b-it
+    - --port
+    - '8000'
+    pull_policy: never
+  google-gemma-3-4b-it-2:
+    image: ai-serving:local
+    restart: unless-stopped
+    environment: {}
+    healthcheck:
+      test:
+      - CMD
+      - python3
+      - -c
+      - import urllib.request as u;u.urlopen('http://localhost:8000/health',timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 600s
+    networks:
+    - serving
+    command:
+    - servectl
+    - mock-engine
+    - --model
+    - google/gemma-3-4b-it
+    - --port
+    - '8000'
+    pull_policy: never
+  qwen-qwen3-32b:
+    image: ai-serving:local
+    restart: unless-stopped
+    environment: {}
+    healthcheck:
+      test:
+      - CMD
+      - python3
+      - -c
+      - import urllib.request as u;u.urlopen('http://localhost:8000/health',timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 600s
+    networks:
+    - serving
+    command:
+    - servectl
+    - mock-engine
+    - --model
+    - Qwen/Qwen3-32B
+    - --port
+    - '8000'
+    pull_policy: never
+  router:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: ai-serving:local
+    restart: unless-stopped
+    command:
+    - uvicorn
+    - servectl.router.app:app_from_env
+    - --factory
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8000'
+    - --no-access-log
+    environment:
+      ROUTER_CONFIG: /etc/router/router.yaml
+      ROUTER_API_KEYS: ${ROUTER_API_KEYS:-}
+    volumes:
+    - ./router.yaml:/etc/router/router.yaml:ro
+    ports:
+    - ${ROUTER_PORT:-8000}:8000
+    depends_on:
+      google-gemma-3-27b-it:
+        condition: service_started
+      google-gemma-3-4b-it-1:
+        condition: service_started
+      google-gemma-3-4b-it-2:
+        condition: service_started
+      qwen-qwen3-32b:
+        condition: service_started
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request as u;u.urlopen('http://localhost:8000/healthz',timeout=3)
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+    - serving
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    command:
+    - --config.file=/etc/prometheus/prometheus.yml
+    - --storage.tsdb.retention.time=15d
+    - --web.enable-lifecycle
+    volumes:
+    - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+    - prom-data:/prometheus
+    ports:
+    - 127.0.0.1:9090:9090
+    networks:
+    - serving
+  grafana:
+    image: grafana/grafana:12.1.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+    - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    - grafana-data:/var/lib/grafana
+    ports:
+    - ${GRAFANA_PORT:-3000}:3000
+    depends_on:
+    - prometheus
+    networks:
+    - serving
+volumes:
+  hf-cache: {}
+  prom-data: {}
+  grafana-data: {}
+networks:
+  serving: {}

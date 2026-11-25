@@ -1,0 +1,19 @@
+routes:
+- id: google/gemma-3-27b-it
+  upstreams:
+  - http://google-gemma-3-27b-it:8000
+  aliases:
+  - answer
+  - summarize
+  fallback: google/gemma-3-4b-it
+- id: google/gemma-3-4b-it
+  upstreams:
+  - http://google-gemma-3-4b-it-1:8000
+  - http://google-gemma-3-4b-it-2:8000
+  aliases:
+  - classify
+- id: Qwen/Qwen3-32B
+  upstreams:
+  - http://qwen-qwen3-32b:8000
+  aliases:
+  - agent

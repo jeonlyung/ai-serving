@@ -1,0 +1,321 @@
+# 자동 생성 — 직접 고치지 말고 catalog/models.yaml 을 수정한 뒤 `servectl render compose`
+# 모델 3종 · GPU 5장 필요
+name: ai-serving
+services:
+  google-gemma-3-27b-it:
+    image: vllm/vllm-openai:v0.34.0
+    restart: unless-stopped
+    environment:
+      HF_HOME: /root/.cache/huggingface
+      HF_TOKEN: ${HF_TOKEN:-}
+      VLLM_LOGGING_LEVEL: INFO
+    healthcheck:
+      test:
+      - CMD
+      - python3
+      - -c
+      - import urllib.request as u;u.urlopen('http://localhost:8000/health',timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 600s
+    networks:
+    - serving
+    command:
+    - google/gemma-3-27b-it
+    - --served-model-name
+    - google/gemma-3-27b-it
+    - answer
+    - summarize
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8000'
+    - --max-model-len
+    - '16384'
+    - --max-num-seqs
+    - '32'
+    - --gpu-memory-utilization
+    - '0.9'
+    - --dtype
+    - auto
+    - --tensor-parallel-size
+    - '2'
+    - --enable-prefix-caching
+    - --generation-config
+    - vllm
+    volumes:
+    - hf-cache:/root/.cache/huggingface
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            device_ids:
+            - '0'
+            - '1'
+            capabilities:
+            - gpu
+  google-gemma-3-4b-it-1:
+    image: vllm/vllm-openai:v0.34.0
+    restart: unless-stopped
+    environment:
+      HF_HOME: /root/.cache/huggingface
+      HF_TOKEN: ${HF_TOKEN:-}
+      VLLM_LOGGING_LEVEL: INFO
+    healthcheck:
+      test:
+      - CMD
+      - python3
+      - -c
+      - import urllib.request as u;u.urlopen('http://localhost:8000/health',timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 600s
+    networks:
+    - serving
+    command:
+    - google/gemma-3-4b-it
+    - --served-model-name
+    - google/gemma-3-4b-it
+    - classify
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8000'
+    - --max-model-len
+    - '8192'
+    - --max-num-seqs
+    - '48'
+    - --gpu-memory-utilization
+    - '0.9'
+    - --dtype
+    - auto
+    - --tensor-parallel-size
+    - '1'
+    - --enable-prefix-caching
+    - --generation-config
+    - vllm
+    volumes:
+    - hf-cache:/root/.cache/huggingface
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            device_ids:
+            - '2'
+            capabilities:
+            - gpu
+  google-gemma-3-4b-it-2:
+    image: vllm/vllm-openai:v0.34.0
+    restart: unless-stopped
+    environment:
+      HF_HOME: /root/.cache/huggingface
+      HF_TOKEN: ${HF_TOKEN:-}
+      VLLM_LOGGING_LEVEL: INFO
+    healthcheck:
+      test:
+      - CMD
+      - python3
+      - -c
+      - import urllib.request as u;u.urlopen('http://localhost:8000/health',timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 600s
+    networks:
+    - serving
+    command:
+    - google/gemma-3-4b-it
+    - --served-model-name
+    - google/gemma-3-4b-it
+    - classify
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8000'
+    - --max-model-len
+    - '8192'
+    - --max-num-seqs
+    - '48'
+    - --gpu-memory-utilization
+    - '0.9'
+    - --dtype
+    - auto
+    - --tensor-parallel-size
+    - '1'
+    - --enable-prefix-caching
+    - --generation-config
+    - vllm
+    volumes:
+    - hf-cache:/root/.cache/huggingface
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            device_ids:
+            - '3'
+            capabilities:
+            - gpu
+  qwen-qwen3-32b:
+    image: vllm/vllm-openai:v0.34.0
+    restart: unless-stopped
+    environment:
+      HF_HOME: /root/.cache/huggingface
+      HF_TOKEN: ${HF_TOKEN:-}
+      VLLM_LOGGING_LEVEL: INFO
+    healthcheck:
+      test:
+      - CMD
+      - python3
+      - -c
+      - import urllib.request as u;u.urlopen('http://localhost:8000/health',timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 600s
+    networks:
+    - serving
+    command:
+    - Qwen/Qwen3-32B
+    - --served-model-name
+    - Qwen/Qwen3-32B
+    - agent
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8000'
+    - --max-model-len
+    - '32768'
+    - --max-num-seqs
+    - '64'
+    - --gpu-memory-utilization
+    - '0.9'
+    - --dtype
+    - auto
+    - --tensor-parallel-size
+    - '1'
+    - --enable-prefix-caching
+    - --generation-config
+    - vllm
+    - --quantization
+    - fp8
+    - --kv-cache-dtype
+    - fp8
+    - --enable-auto-tool-choice
+    - --tool-call-parser
+    - hermes
+    - --reasoning-parser
+    - qwen3
+    volumes:
+    - hf-cache:/root/.cache/huggingface
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            device_ids:
+            - '4'
+            capabilities:
+            - gpu
+  router:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: ai-serving:local
+    restart: unless-stopped
+    command:
+    - uvicorn
+    - servectl.router.app:app_from_env
+    - --factory
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8000'
+    - --no-access-log
+    environment:
+      ROUTER_CONFIG: /etc/router/router.yaml
+      ROUTER_API_KEYS: ${ROUTER_API_KEYS:-}
+    volumes:
+    - ./router.yaml:/etc/router/router.yaml:ro
+    ports:
+    - ${ROUTER_PORT:-8000}:8000
+    depends_on:
+      google-gemma-3-27b-it:
+        condition: service_started
+      google-gemma-3-4b-it-1:
+        condition: service_started
+      google-gemma-3-4b-it-2:
+        condition: service_started
+      qwen-qwen3-32b:
+        condition: service_started
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request as u;u.urlopen('http://localhost:8000/healthz',timeout=3)
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+    - serving
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    command:
+    - --config.file=/etc/prometheus/prometheus.yml
+    - --storage.tsdb.retention.time=15d
+    - --web.enable-lifecycle
+    volumes:
+    - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+    - prom-data:/prometheus
+    ports:
+    - 127.0.0.1:9090:9090
+    networks:
+    - serving
+  grafana:
+    image: grafana/grafana:12.1.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+    - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    - grafana-data:/var/lib/grafana
+    ports:
+    - ${GRAFANA_PORT:-3000}:3000
+    depends_on:
+    - prometheus
+    networks:
+    - serving
+  dcgm-exporter:
+    image: nvcr.io/nvidia/k8s/dcgm-exporter:4.4.0-4.5.0-ubuntu22.04
+    restart: unless-stopped
+    cap_add:
+    - SYS_ADMIN
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            count: all
+            capabilities:
+            - gpu
+    networks:
+    - serving
+volumes:
+  hf-cache: {}
+  prom-data: {}
+  grafana-data: {}
+networks:
+  serving: {}

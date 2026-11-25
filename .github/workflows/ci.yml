@@ -1,0 +1,37 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: { python: ["3.10", "3.12"] }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python }}" }
+      - run: pip install -e '.[dev]'
+      - run: ruff check src tests && ruff format --check src tests
+      - run: pytest -q
+      - name: 산출물이 카탈로그와 일치하는가
+        run: servectl render all --check && servectl render compose --mock --check
+      - name: 카탈로그 GPU 메모리 산정
+        run: servectl plan
+      - name: 매니페스트 빌드 검증
+        run: |
+          kubectl kustomize deploy/k8s > /dev/null
+          docker compose -f deploy/compose/docker-compose.yml config -q
+          docker compose -f deploy/compose-mock/docker-compose.yml config -q
+
+  stack:   # 실제로 컨테이너를 띄워 스모크까지 (mock 엔진)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e .
+      - run: cd deploy/compose-mock && docker compose up -d --build
+      - run: sleep 15 && servectl smoke
+      - run: servectl bench --model answer -n 40 -j 8 --max-tokens 32
+      - if: always()
+        run: cd deploy/compose-mock && docker compose logs --tail=50 && docker compose down -v

@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qwen-qwen3-32b
+  labels:
+    app.kubernetes.io/name: qwen-qwen3-32b
+    app.kubernetes.io/component: engine
+    app.kubernetes.io/part-of: ai-serving
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: qwen-qwen3-32b
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: qwen-qwen3-32b
+        app.kubernetes.io/component: engine
+        app.kubernetes.io/part-of: ai-serving
+        model: qwen-qwen3-32b
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8000'
+        prometheus.io/path: /metrics
+    spec:
+      containers:
+      - name: engine
+        image: vllm/vllm-openai:v0.34.0
+        ports:
+        - name: http
+          containerPort: 8000
+        env:
+        - name: HF_HOME
+          value: /root/.cache/huggingface
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: ai-serving-secrets
+              key: HF_TOKEN
+              optional: true
+        - name: VLLM_LOGGING_LEVEL
+          value: INFO
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 10
+          failureThreshold: 180
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 10
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 20
+          failureThreshold: 6
+          timeoutSeconds: 10
+        volumeMounts:
+        - name: hf-cache
+          mountPath: /root/.cache/huggingface
+        - name: shm
+          mountPath: /dev/shm
+        args:
+        - Qwen/Qwen3-32B
+        - --served-model-name
+        - Qwen/Qwen3-32B
+        - agent
+        - --host
+        - 0.0.0.0
+        - --port
+        - '8000'
+        - --max-model-len
+        - '32768'
+        - --max-num-seqs
+        - '64'
+        - --gpu-memory-utilization
+        - '0.9'
+        - --dtype
+        - auto
+        - --tensor-parallel-size
+        - '1'
+        - --enable-prefix-caching
+        - --generation-config
+        - vllm
+        - --quantization
+        - fp8
+        - --kv-cache-dtype
+        - fp8
+        - --enable-auto-tool-choice
+        - --tool-call-parser
+        - hermes
+        - --reasoning-parser
+        - qwen3
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+      volumes:
+      - name: hf-cache
+        persistentVolumeClaim:
+          claimName: hf-cache
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi
+      terminationGracePeriodSeconds: 60
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qwen-qwen3-32b
+  labels:
+    app.kubernetes.io/name: qwen-qwen3-32b
+    app.kubernetes.io/component: engine
+    app.kubernetes.io/part-of: ai-serving
+    model: qwen-qwen3-32b
+    ai-serving/model-id: qwen-qwen3-32b
+spec:
+  selector:
+    app.kubernetes.io/name: qwen-qwen3-32b
+  ports:
+  - name: http
+    port: 8000
+    targetPort: http
