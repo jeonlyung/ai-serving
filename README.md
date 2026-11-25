@@ -16,7 +16,7 @@ Prometheus ◀ 엔진·라우터·GPU(DCGM) ─▶ Grafana 대시보드 · 알�
 
 | 산출물 | 명령 |
 |---|---|
-| GPU 메모리 산정 (올리기 전 "들어가나?") | `servectl plan` |
+| GPU 메모리 산정 | `servectl plan` |
 | docker-compose 스택 (엔진+라우터+Prometheus+Grafana+DCGM) | `servectl render compose` |
 | Kubernetes 매니페스트 (Kustomize, KEDA, PDB, PodMonitor, 알림 규칙) | `servectl render k8s` |
 | GPU 없이 전체 스택 검증 (mock 엔진) | `servectl render compose --mock` |
@@ -95,7 +95,7 @@ deploy/                   렌더 결과 (커밋됨, CI 가 최신 여부 검사)
 docs/                     ARCHITECTURE · OPERATIONS
 ```
 
-## 검증 상태 (솔직하게)
+## 검증 상태 
 
 | 항목 | 상태 |
 |---|---|
